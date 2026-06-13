@@ -2,8 +2,11 @@
 FROM node:22-alpine AS build
 WORKDIR /app
 
-COPY package.json package-lock.json* ./
-RUN npm ci
+# package-lock.json nije commit-ovan (nismo mogli da pokrenemo npm install
+# u našem okruženju). Koristimo 'npm install' umesto 'npm ci' da ne
+# zahtevamo lockfile. CI/CD može da doda 'npm ci' ako kreira lockfile.
+COPY package.json ./
+RUN npm install --no-audit --no-fund
 
 COPY tsconfig.json ./
 COPY src ./src
