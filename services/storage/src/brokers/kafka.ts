@@ -39,8 +39,13 @@ export class KafkaStorageConsumer {
         this.connected = true;
         log.info({ topic: this.topic, groupId: this.groupId }, 'Kafka consumer subscribed');
 
+        // autoCommit=true: kafkajs commits offsete svakih 5s (default). Ranije
+        // je bilo autoCommit=false sa `commit()` koji se NIKAD nije pozvao,
+        // pa bi restart storage-a re-čitao SVE poruke od početka i pisao
+        // duplikate u Postgres (BIGSERIAL id bi odbacio, dakle gubitak).
         await this.consumer.run({
-            autoCommit: false,
+            autoCommit: true,
+            autoCommitInterval: 5_000,
             eachMessage: async ({ topic, partition, message }) => {
                 metrics.received.inc();
                 const msg: RawMessage = {
@@ -53,12 +58,6 @@ export class KafkaStorageConsumer {
                 await this.onMessage(msg);
             },
         });
-    }
-
-    async commit(partition: number, offset: string): Promise<void> {
-        await this.consumer.commitOffsets([
-            { topic: this.topic, partition, offset: (BigInt(offset) + 1n).toString() },
-        ]);
     }
 
     async stop(): Promise<void> {
