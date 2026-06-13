@@ -1,0 +1,31 @@
+{
+  "name": "iot-storage",
+  "version": "1.0.0",
+  "description": "Data Storage Service: subscribes to MQTT/Kafka, batches to PostgreSQL",
+  "main": "dist/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "tsc-watch --onSuccess \"node dist/index.js\"",
+    "lint": "eslint . --ext .ts"
+  },
+  "dependencies": {
+    "mqtt": "^5.10.1",
+    "kafkajs": "^2.2.4",
+    "pg": "^8.13.1",
+    "pg-copy-streams": "^6.0.6",
+    "pino": "^9.5.0",
+    "pino-pretty": "^11.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.11.10",
+    "@types/mqtt": "^2.5.0",
+    "typescript": "^5.7.2",
+    "tsc-watch": "^6.2.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
