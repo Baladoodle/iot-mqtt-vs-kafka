@@ -1,0 +1,37 @@
+name: iots-proj2
+
+# =================================================================
+# MQTT overlay — dodaje Mosquitto i postavlja BROKER=mqtt.
+# Koristiti sa: docker compose -f compose.yaml -f compose.mqtt.yaml up
+# =================================================================
+
+services:
+
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: ${COMPOSE_PROJECT_NAME:-iots-proj2}-mosquitto
+    ports:
+      - "1883:1883"
+    volumes:
+      - ../brokers/mosquitto/config:/mosquitto/config:ro
+      - mqtt_data:/mosquitto/data
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_pub -h localhost -t health -m ok -q 0 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  ingestion:
+    environment:
+      BROKER: mqtt
+
+  storage:
+    environment:
+      BROKER: mqtt
+
+  analytics:
+    environment:
+      BROKER: mqtt
+
+volumes:
+  mqtt_data:

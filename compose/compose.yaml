@@ -1,0 +1,122 @@
+name: iots-proj2
+
+# =================================================================
+# Bazni compose fajl: zajednički servisi za obe varijante brokera.
+# Preklopite sa compose.mqtt.yaml ili compose.kafka.yaml.
+# =================================================================
+
+services:
+
+  # ---------- Postgres ----------
+  postgres:
+    image: postgres:16-alpine
+    container_name: ${COMPOSE_PROJECT_NAME:-iots-proj2}-postgres
+    environment:
+      POSTGRES_USER: iot
+      POSTGRES_PASSWORD: iot
+      POSTGRES_DB: iot
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ../postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U iot -d iot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ---------- Ingestion (Data Ingestion Service) ----------
+  ingestion:
+    build:
+      context: ../services/ingestion
+      dockerfile: Dockerfile
+    container_name: ${COMPOSE_PROJECT_NAME:-iots-proj2}-ingestion
+    environment:
+      # Broker specifično (preklapaju se u overlay fajlovima)
+      BROKER: ${BROKER:-mqtt}
+      # MQTT
+      MQTT_URL: ${MQTT_URL:-mosquitto}
+      MQTT_PORT: ${MQTT_PORT:-1883}
+      MQTT_QOS: ${MQTT_QOS:-1}
+      MQTT_CLEAN_SESSION: ${MQTT_CLEAN_SESSION:-true}
+      MQTT_TOPIC_PREFIX: ${MQTT_TOPIC_PREFIX:-iot/telemetry}
+      # Kafka
+      KAFKA_BROKERS: ${KAFKA_BROKERS:-kafka:9092}
+      KAFKA_TOPIC: ${KAFKA_TOPIC:-iot-telemetry}
+      KAFKA_ACKS: ${KAFKA_ACKS:-all}
+      KAFKA_LINGER_MS: ${KAFKA_LINGER_MS:-5}
+      # Scheduler
+      NUM_DEVICES: ${NUM_DEVICES:-100}
+      RATE: ${RATE:-100}
+      DURATION_S: ${DURATION_S:-60}
+      MODE: ${MODE:-rate}
+      TIME_SCALE: ${TIME_SCALE:-10.0}
+      DATA_CSV_PATH: ${DATA_CSV_PATH:-/data/Data.csv}
+      INJECT_HIGH_TEMP: ${INJECT_HIGH_TEMP:-false}
+      INJECT_AT_S: ${INJECT_AT_S:-10}
+      METRICS_PORT: ${INGEST_METRICS_PORT:-9091}
+    volumes:
+      # Bind Data.csv (ili Data.full.csv) iz hosta u kontejner.
+      # Podrazumevano očekuje ../../Data.csv (relativno od compose/).
+      # Ako koristite 2% sample, ovo je već unutar ../Data.csv.
+      - ../Data.csv:/data/Data.csv:ro
+    ports:
+      - "${INGEST_METRICS_PORT:-9091}:${INGEST_METRICS_PORT:-9091}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ---------- Storage (Data Storage Service) ----------
+  storage:
+    build:
+      context: ../services/storage
+      dockerfile: Dockerfile
+    container_name: ${COMPOSE_PROJECT_NAME:-iots-proj2}-storage
+    environment:
+      BROKER: ${BROKER:-mqtt}
+      # MQTT
+      MQTT_URL: ${MQTT_URL:-mosquitto}
+      MQTT_PORT: ${MQTT_PORT:-1883}
+      MQTT_TOPIC: ${MQTT_TOPIC_PREFIX:-iot/telemetry}/#
+      MQTT_SUB_QOS: ${MQTT_QOS:-1}
+      MQTT_CLEAN_SESSION: ${MQTT_CLEAN_SESSION:-true}
+      # Kafka
+      KAFKA_BROKERS: ${KAFKA_BROKERS:-kafka:9092}
+      KAFKA_TOPIC: ${KAFKA_TOPIC:-iot-telemetry}
+      KAFKA_GROUP: ${KAFKA_GROUP:-storage-cg}
+      # Sink
+      DB_ENABLED: ${DB_ENABLED:-true}
+      DATABASE_URL: ${DATABASE_URL:-postgres://iot:iot@postgres:5432/iot}
+      BATCH_SIZE: ${BATCH_SIZE:-500}
+      FLUSH_INTERVAL_MS: ${FLUSH_INTERVAL_MS:-200}
+      METRICS_PORT: ${STORAGE_METRICS_PORT:-9092}
+    ports:
+      - "${STORAGE_METRICS_PORT:-9092}:${STORAGE_METRICS_PORT:-9092}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ---------- Analytics (Tumbling Window + Alert) ----------
+  analytics:
+    build:
+      context: ../services/analytics
+      dockerfile: Dockerfile
+    container_name: ${COMPOSE_PROJECT_NAME:-iots-proj2}-analytics
+    environment:
+      BROKER: ${BROKER:-mqtt}
+      MQTT_URL: ${MQTT_URL:-mosquitto}
+      MQTT_QOS: ${MQTT_QOS:-1}
+      MQTT_TOPIC_PREFIX: ${MQTT_TOPIC_PREFIX:-iot/telemetry}/#
+      KAFKA_BROKERS: ${KAFKA_BROKERS:-kafka:9092}
+      KAFKA_TOPIC: ${KAFKA_TOPIC:-iot-telemetry}
+      KAFKA_GROUP: ${KAFKA_GROUP_ANALYTICS:-analytics-cg}
+      METRICS_PORT: ${ANALYTICS_METRICS_PORT:-9090}
+    ports:
+      - "${ANALYTICS_METRICS_PORT:-9090}:${ANALYTICS_METRICS_PORT:-9090}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:

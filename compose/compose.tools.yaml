@@ -1,0 +1,43 @@
+name: iots-proj2
+
+# =================================================================
+# Tools overlay — bench alati (emqtt-bench, k6) i monitoring
+# (Prometheus, Grafana). Aktiviraju se sa --profile tools.
+# =================================================================
+
+services:
+
+  emqtt-bench:
+    image: emqx/emqtt-bench:latest
+    container_name: ${COMPOSE_PROJECT_NAME:-iots-proj2}-emqtt-bench
+    profiles: [tools]
+    command: ["--help"]
+    entrypoint: ["emqtt_bench"]
+
+  k6:
+    image: grafana/k6:latest
+    container_name: ${COMPOSE_PROJECT_NAME:-iots-proj2}-k6
+    profiles: [tools]
+    command: ["version"]
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: ${COMPOSE_PROJECT_NAME:-iots-proj2}-prometheus
+    profiles: [tools]
+    ports:
+      - "9093:9090"
+    volumes:
+      - ../benchmarks/scenarios/lib/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: ${COMPOSE_PROJECT_NAME:-iots-proj2}-grafana
+    profiles: [tools]
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    depends_on:
+      - prometheus
