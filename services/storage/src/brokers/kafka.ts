@@ -35,9 +35,9 @@ export class KafkaStorageConsumer {
 
     async start(): Promise<void> {
         await this.consumer.connect();
-        await this.consumer.subscribe({ topic, fromBeginning: true });
+        await this.consumer.subscribe({ topic: this.topic, fromBeginning: true });
         this.connected = true;
-        log.info({ topic, groupId: this.groupId }, 'Kafka consumer subscribed');
+        log.info({ topic: this.topic, groupId: this.groupId }, 'Kafka consumer subscribed');
 
         await this.consumer.run({
             autoCommit: false,
