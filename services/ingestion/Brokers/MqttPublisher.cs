@@ -3,7 +3,8 @@ using System.Text.Json;
 using IoTIngestion.Payloads;
 using MQTTnet;
 using MQTTnet.Client;
-// MQTTnet 5.x: IManagedMqttClient je u MQTTnet (core), ne u zasebnom paketu.
+using MQTTnet.Extensions.ManagedClient;
+using MQTTnet.Protocol;
 
 namespace IoTIngestion.Brokers;
 

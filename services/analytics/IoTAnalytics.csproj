@@ -11,8 +11,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- MQTTnet 5.x: IManagedMqttClient je sada deo core paketa. -->
-    <PackageReference Include="MQTTnet" Version="5.0.1.*" />
+    <!-- MQTTnet 4.3.x: IManagedMqttClient zivi u zasebnom paketu
+         MQTTnet.Extensions.ManagedClient. MQTTnet 5.x je IZBRISAO
+         ManagedClient ekstenziju kao breaking change, pa ostajemo
+         na 4.3 grani (floating 4.3.* dozvoljava najnoviji 4.3.x patch). -->
+    <PackageReference Include="MQTTnet" Version="4.3.*" />
+    <PackageReference Include="MQTTnet.Extensions.ManagedClient" Version="4.3.*" />
     <PackageReference Include="Confluent.Kafka" Version="2.6.*" />
     <PackageReference Include="prometheus-net" Version="8.*" />
     <PackageReference Include="prometheus-net.AspNetCore" Version="8.*" />

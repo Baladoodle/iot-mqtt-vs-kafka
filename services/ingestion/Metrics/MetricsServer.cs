@@ -7,15 +7,18 @@ namespace IoTIngestion.Metrics;
 /// </summary>
 public static class IngestionMetrics
 {
-    public static readonly Counter Emitted = Metrics
+    // `Prometheus.Metrics` je kvalifikovano jer bismo unutar ovog namespace-a
+    // u suprotnom razrešili `Metrics` kao `IoTIngestion.Metrics` (C# preferira
+    // trenutni namespace u odnosu na `using` direktivu).
+    public static readonly Counter Emitted = Prometheus.Metrics
         .CreateCounter("ingest_emitted_total", "Ukupan broj emitovanih IoT evenata.");
 
-    public static readonly Counter Dropped = Metrics
+    public static readonly Counter Dropped = Prometheus.Metrics
         .CreateCounter("ingest_dropped_total", "Broj evenata koje broker nije prihvatio.");
 
-    public static readonly Gauge Throughput = Metrics
+    public static readonly Gauge Throughput = Prometheus.Metrics
         .CreateGauge("ingest_throughput_msg_per_sec", "Trenutni throughput.");
 
-    public static readonly Counter BytesEmitted = Metrics
+    public static readonly Counter BytesEmitted = Prometheus.Metrics
         .CreateCounter("ingest_bytes_total", "Ukupan broj emitovanih bajtova.");
 }

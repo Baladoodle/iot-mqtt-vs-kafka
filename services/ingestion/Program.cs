@@ -1,8 +1,11 @@
 using IoTIngestion.Brokers;
 using IoTIngestion.Metrics;
+using IoTIngestion.Payloads;
 using IoTIngestion.Replay;
+using Microsoft.Extensions.Logging;
 using Prometheus;
 using Serilog;
+using Serilog.Extensions.Logging;
 
 namespace IoTIngestion;
 
@@ -47,6 +50,11 @@ public class Program
             var app = builder.Build();
             app.MapMetrics();   // /metrics
 
+            // Pretvaramo Serilog u Microsoft.Extensions.Logging.ILogger da
+            // publisher/reader klase (koje koriste MEL LogInformation/...) mogu
+            // da koriste Serilog kao pozadinski loger.
+            using var melFactory = LoggerFactory.Create(b => b.AddSerilog(Log.Logger, dispose: false));
+
             // --- Izbor publishera ---
             Func<TelemetryEvent, ValueTask> publisher;
             if (broker.Equals("mqtt", StringComparison.OrdinalIgnoreCase))
@@ -57,7 +65,7 @@ public class Program
                     .Equals("true", StringComparison.OrdinalIgnoreCase);
                 var clientId = $"ingest-{Environment.MachineName}-{Guid.NewGuid():N}";
 
-                var pub = new MqttPublisher(mqttUrl, clientId, mqttQos, mqttClean, topicPrefix, Log.Logger.ForContext<MqttPublisher>());
+                var pub = new MqttPublisher(mqttUrl, clientId, mqttQos, mqttClean, topicPrefix, melFactory.CreateLogger<MqttPublisher>());
                 await pub.StartAsync(CancellationToken.None);
                 publisher = pub.PublishAsync;
                 Log.Information("MQTT publisher aktivan: url={Url} qos={Qos} clean={Clean}", mqttUrl, mqttQos, mqttClean);
@@ -69,7 +77,7 @@ public class Program
                 var acks = Environment.GetEnvironmentVariable("KAFKA_ACKS") ?? "all";
                 var lingerMs = int.Parse(Environment.GetEnvironmentVariable("KAFKA_LINGER_MS") ?? "5");
 
-                var pub = new KafkaPublisher(brokers, topic, acks, lingerMs, "ingestion", Log.Logger.ForContext<KafkaPublisher>());
+                var pub = new KafkaPublisher(brokers, topic, acks, lingerMs, "ingestion", melFactory.CreateLogger<KafkaPublisher>());
                 publisher = pub.PublishAsync;
                 Log.Information("Kafka publisher aktivan: brokers={Brokers} topic={Topic} acks={Acks}", brokers, topic, acks);
             }
@@ -79,7 +87,7 @@ public class Program
             }
 
             // --- CSV reader + scheduler ---
-            var csvReader = new CsvReader(dataPath, Log.Logger.ForContext<CsvReader>());
+            var csvReader = new CsvReader(dataPath, melFactory.CreateLogger<CsvReader>());
             var scheduler = new Scheduler(
                 csvReader,
                 mode,
@@ -89,7 +97,7 @@ public class Program
                 durationSec * 1000L,
                 injectHighTemp,
                 injectAtSec,
-                Log.Logger.ForContext<Scheduler>());
+                melFactory.CreateLogger<Scheduler>());
 
             // Wrap publisher da broji metriku
             Func<TelemetryEvent, ValueTask> counted = async evt =>

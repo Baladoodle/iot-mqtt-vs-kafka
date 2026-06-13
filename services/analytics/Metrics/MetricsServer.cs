@@ -7,19 +7,21 @@ namespace IoTAnalytics.Metrics;
 /// </summary>
 public static class AnalyticsMetrics
 {
-    public static readonly Counter MessagesTotal = Metrics
+    // Kvalifikovano `Prometheus.Metrics` — unutar ovog namespace-a bi C# u
+    // suprotnom razrešio `Metrics` kao `IoTAnalytics.Metrics`.
+    public static readonly Counter MessagesTotal = Prometheus.Metrics
         .CreateCounter("analytics_messages_total", "Broj primljenih evenata od brokera.");
 
-    public static readonly Counter AlertsTotal = Metrics
+    public static readonly Counter AlertsTotal = Prometheus.Metrics
         .CreateCounter("analytics_alerts_total", "Broj ispisanih alert-a (mean > 50).");
 
-    public static readonly Gauge WindowMean = Metrics
+    public static readonly Gauge WindowMean = Prometheus.Metrics
         .CreateGauge("analytics_window_mean_engine_temp", "Mean engine temperature u poslednjem zatvorenom prozoru.");
 
-    public static readonly Counter LateDrops = Metrics
+    public static readonly Counter LateDrops = Prometheus.Metrics
         .CreateCounter("analytics_late_drops_total", "Broj evenata odbačenih jer su van prozora.");
 
-    public static readonly Histogram E2ELatency = Metrics
+    public static readonly Histogram E2ELatency = Prometheus.Metrics
         .CreateHistogram("analytics_e2e_latency_seconds",
             "End-to-end latencija od publish do alert log-a (s).",
             new HistogramConfiguration

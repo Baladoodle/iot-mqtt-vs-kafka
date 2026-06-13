@@ -4,7 +4,8 @@ using IoTAnalytics.Metrics;
 using IoTAnalytics.Windows;
 using MQTTnet;
 using MQTTnet.Client;
-// MQTTnet 5.x: IManagedMqttClient je u MQTTnet (core), ne u zasebnom paketu.
+using MQTTnet.Extensions.ManagedClient;
+using MQTTnet.Protocol;
 
 namespace IoTAnalytics.Brokers;
 
@@ -42,10 +43,11 @@ public sealed class MqttConsumer : BackgroundService
             .Build();
 
         _client.StartAsync(options).GetAwaiter().GetResult();
-        _client.SubscribeAsync(new MqttTopicFilterBuilder()
+        // IManagedMqttClient.SubscribeAsync u v4.3.x očekuje IEnumerable<MqttTopicFilter>.
+        _client.SubscribeAsync(new[] { new MqttTopicFilterBuilder()
             .WithTopic(topic)
             .WithQualityOfServiceLevel((MqttQualityOfServiceLevel)_qos)
-            .Build()).GetAwaiter().GetResult();
+            .Build() }).GetAwaiter().GetResult();
 
         _logger.LogInformation("MQTT subscribed: topic={Topic} qos={Qos}", topic, _qos);
     }

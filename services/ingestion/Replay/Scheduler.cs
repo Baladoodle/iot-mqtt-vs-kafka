@@ -99,7 +99,8 @@ public sealed class Scheduler
         {
             var row = rows[rowIdx % rows.Count];
             rowIdx++;
-            var device = devices[emitted % devices.Count];
+            // emitted je long; IReadOnlyList indexer prima int.
+            var device = devices[(int)(emitted % devices.Count)];
 
             var payload = BuildPayload(row, device);
             await publishAsync(payload).ConfigureAwait(false);
