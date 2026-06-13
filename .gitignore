@@ -1,0 +1,47 @@
+# --- Build outputs ---
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+bin/
+obj/
+.vs/
+
+# --- IDE / OS junk ---
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# --- Logs ---
+*.log
+*.pid
+
+# --- Local env ---
+.env
+.env.local
+
+# --- Experiment raw data (large, per-run JSONL/stats) ---
+results/raw/*
+!results/raw/.gitkeep
+results/plots/*
+!results/plots/.gitkeep
+
+# --- Data.full.csv is NOT ignored: a 12 MB sample IS committed as Data.csv.
+# --- The full 580 MB file lives alongside it on disk and is excluded.
+Data.full.csv
+
+# --- Environment mount artifacts (character special files, not real config) ---
+/.bash_profile
+/.bashrc
+/.gitconfig
+/.gitmodules
+/.idea
+/.mcp.json
+/.profile
+/.ripgreprc
+/.vscode
+/.zprofile
+/.zshrc
+/.claude/
