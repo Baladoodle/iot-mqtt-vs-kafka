@@ -4,6 +4,7 @@ namespace IoTAnalytics.Metrics;
 
 /// <summary>
 /// Prometheus metrike za Analytics. /metrics endpoint.
+/// </summary>
 public static class AnalyticsMetrics
 {
     public static readonly Counter MessagesTotal = Metrics

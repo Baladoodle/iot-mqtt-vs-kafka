@@ -18,11 +18,9 @@ public static class Fanout
         if (numDevices < 1) throw new ArgumentOutOfRangeException(nameof(numDevices));
         if (numDevices < PilotCount)
         {
-            // Manje uređaja nego pilota — svaki uređaj = 1 pilot, replike samo za prvih
-            int i = 0;
+            // Manje uređaja nego pilota — svaki uređaj = 1 pilot, replika 0
             for (int p = 0; p < numDevices; p++)
                 yield return new VirtualDevice(p, 0);
-            i++;
         }
         else
         {

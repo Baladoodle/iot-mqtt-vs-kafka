@@ -60,14 +60,9 @@ public sealed class Scheduler
             "Scheduler start: mode={Mode} devices={Devices} rate={Rate}/s timeScale={Scale} duration={DurMs}ms",
             _mode, _numDevices, _ratePerSec, _timeScale, _durationMs);
 
-        var sw = Stopwatch.StartNew();
-        long totalEmitted = 0;
-        var injected = false;
-
         if (_mode == Mode.Rate)
         {
-            await RunRateAsync(devices, publishAsync, sw, totalEmitted => Interlocked.Add(ref totalEmitted, 0), ct)
-                .ConfigureAwait(false);
+            await RunRateAsync(devices, publishAsync, ct).ConfigureAwait(false);
         }
         else
         {
@@ -78,13 +73,10 @@ public sealed class Scheduler
     private async Task RunRateAsync(
         IReadOnlyList<Fanout.VirtualDevice> devices,
         Func<TelemetryEvent, ValueTask> publishAsync,
-        Stopwatch sw,
-        Func<long, long> counter,
         CancellationToken ct)
     {
-        // Ukupno poruka koje treba emitovati u duration
-        // rate × duration_s × devices = ukupno
-        // Ako je to više nego redova u CSV-u, loopujemo.
+        // Ukupno poruka: rate × duration_s.
+        // Ako je to više nego redova u CSV-u, loopujemo CSV.
         long totalToEmit = (long)(_ratePerSec * (_durationMs / 1000.0));
         if (totalToEmit < 1) totalToEmit = 1;
 
@@ -99,9 +91,8 @@ public sealed class Scheduler
         }
         _logger.LogInformation("Učitano {Count} redova iz CSV-a", rows.Count);
 
-        // Burst limit: koliko poruka šaljemo u jednom ciklusu
+        // Vremenski razmak između poruka za održavanje RATE
         long intervalMicros = 1_000_000 / _ratePerSec;  // razmak između poruka
-        long nextDeadlineMicros = 0;
         int rowIdx = 0;
 
         while (emitted < totalToEmit && !ct.IsCancellationRequested)
@@ -110,7 +101,7 @@ public sealed class Scheduler
             rowIdx++;
             var device = devices[emitted % devices.Count];
 
-            var payload = BuildPayload(row, device, sw);
+            var payload = BuildPayload(row, device);
             await publishAsync(payload).ConfigureAwait(false);
             emitted++;
 
@@ -151,7 +142,7 @@ public sealed class Scheduler
                 }
                 prevSessionMs = sessionMs;
 
-                var payload = BuildPayload(row, device, Stopwatch.StartNew());
+                var payload = BuildPayload(row, device);
                 await publishAsync(payload).ConfigureAwait(false);
                 emitted++;
 
@@ -167,8 +158,7 @@ public sealed class Scheduler
 
     private TelemetryEvent BuildPayload(
         CsvReader.CsvRow row,
-        Fanout.VirtualDevice device,
-        Stopwatch sw)
+        Fanout.VirtualDevice device)
     {
         return new TelemetryEvent
         {
