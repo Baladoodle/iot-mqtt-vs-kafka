@@ -83,7 +83,12 @@ def parse_analytics_log(log_path: Path) -> dict:
 
 
 def parse_stats_csv(stats_path: Path) -> dict:
-    """Sažmi docker stats CSV po kontejneru — prosečni CPU i RAM."""
+    """Sažmi docker stats CSV po kontejneru — prosečni CPU i RAM.
+
+    Filtrira samo projektne kontejnere (`iots-proj2-*`) da strani procesi
+    na hostu (npr. litellm, claude-code) ne kontaminiraju ukupne metrike.
+    """
+    PROJECT_PREFIX = "iots-proj2-"
     by_container = {}
     if not stats_path.exists():
         return by_container
@@ -91,7 +96,7 @@ def parse_stats_csv(stats_path: Path) -> dict:
         r = csv.DictReader(f)
         for row in r:
             name = row.get("Name") or row.get("Container") or ""
-            if not name:
+            if not name or not name.startswith(PROJECT_PREFIX):
                 continue
             cpu = row.get("CPUPerc", "0%").replace("%", "")
             mem = row.get("MemUsage", "0MiB / 0MiB")

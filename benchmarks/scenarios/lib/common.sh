@@ -56,17 +56,24 @@ start_metrics_collector() {
     local outdir="$1"
     local interval="${2:-1}"
     mkdir -p "$outdir"
+    local stats_csv="$outdir/stats.csv"
+    # Header je neophodan — make-report-tables.py koristi csv.DictReader
+    # i tretira prvi red kao zaglavlje. Bez ovoga se per-container CPU/RAM
+    # izgube pa tabela prikazuje 0/0.
+    if [ ! -f "$stats_csv" ] || [ ! -s "$stats_csv" ]; then
+        echo "Name,CPUPerc,MemUsage,NetIO,BlockIO" > "$stats_csv"
+    fi
     (
         while true; do
             docker stats --no-stream --format \
                 "{{.Name}},{{.CPUPerc}},{{.MemUsage}},{{.NetIO}},{{.BlockIO}}" \
-                >> "$outdir/stats.csv" 2>/dev/null || true
+                >> "$stats_csv" 2>/dev/null || true
             sleep "$interval"
         done
     ) &
     METRICS_PID=$!
     echo "$METRICS_PID" > "$outdir/metrics.pid"
-    echo "Metrics collector PID=$METRICS_PID, output=$outdir/stats.csv"
+    echo "Metrics collector PID=$METRICS_PID, output=$stats_csv"
 }
 
 stop_metrics_collector() {
