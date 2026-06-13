@@ -11,10 +11,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Floating versions: NuGet resolves to the latest patch/minor
-         available at build time. Pin in CI lockfile for reproducibility. -->
+    <!-- MQTTnet 5.x: IManagedMqttClient je sada deo core paketa. -->
     <PackageReference Include="MQTTnet" Version="5.0.1.*" />
-    <PackageReference Include="MQTTnet.Extensions.ManagedClient" Version="5.0.1.*" />
     <PackageReference Include="Confluent.Kafka" Version="2.6.*" />
     <PackageReference Include="prometheus-net" Version="8.*" />
     <PackageReference Include="prometheus-net.AspNetCore" Version="8.*" />

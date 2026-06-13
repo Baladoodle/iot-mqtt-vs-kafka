@@ -4,7 +4,7 @@ using IoTAnalytics.Metrics;
 using IoTAnalytics.Windows;
 using MQTTnet;
 using MQTTnet.Client;
-using MQTTnet.Extensions.ManagedClient;
+// MQTTnet 5.x: IManagedMqttClient je u MQTTnet (core), ne u zasebnom paketu.
 
 namespace IoTAnalytics.Brokers;
 
