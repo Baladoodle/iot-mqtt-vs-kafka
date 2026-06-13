@@ -53,7 +53,9 @@ else
 fi
 
 # Portovi
-for p in 1883 5432 9090 9091 9092; do
+# 1883 MQTT, 5432 Postgres, 9090 Analytics metrics, 9091 Ingestion metrics,
+# 9092 Kafka broker, 9093 Storage metrics
+for p in 1883 5432 9090 9091 9092 9093; do
     if (echo > /dev/tcp/127.0.0.1/$p) 2>/dev/null; then
         err "port $p je zauzet"
     else

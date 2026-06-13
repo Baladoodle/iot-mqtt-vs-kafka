@@ -11,9 +11,13 @@ COMPOSE_DIR="$ROOT_DIR/compose"
 RESULTS_DIR="$ROOT_DIR/results"
 
 # --- docker compose komanda ---
-DC="docker compose -f $COMPOSE_DIR/compose.yaml"
+# --env-file .env je neophodan: docker compose v2 NE učitava .env iz
+# project root-a (traži ga u direktorijumu PRVOG compose fajla, tj. compose/).
+# Bez ovoga STORAGE_METRICS_PORT i ostali env ostaju na compose default-ima.
+DC="docker compose --env-file $ROOT_DIR/.env -f $COMPOSE_DIR/compose.yaml"
 
-# Odabir compose fajla po brokeru
+# Odabir compose fajla po brokeru. Koriste ga scenario skripte za
+# definisanje sopstvenog $DC_BROKER varijable.
 compose_for() {
     local broker="$1"
     case "$broker" in
@@ -21,6 +25,14 @@ compose_for() {
         kafka) echo "-f $COMPOSE_DIR/compose.kafka.yaml" ;;
         *)     echo "Unknown broker: $broker" >&2; return 1 ;;
     esac
+}
+
+# Vrati punu docker compose komandu za dati broker (uključujući --env-file).
+dc_for() {
+    local broker="$1"
+    local overlay
+    overlay=$(compose_for "$broker") || return 1
+    echo "docker compose --env-file $ROOT_DIR/.env -f $COMPOSE_DIR/compose.yaml $overlay"
 }
 
 # Sačeka da broker bude spreman (healthcheck).

@@ -41,7 +41,7 @@ export DURATION_S="30"
 export MODE="rate"
 
 # Stack down prethodni, pa up novi
-DC_BROKER="docker compose -f $COMPOSE_DIR/compose.yaml -f $COMPOSE_DIR/compose.${BROKER}.yaml"
+DC_BROKER="$(dc_for "$BROKER")"
 echo "[1/4] Pokrećem stack..."
 $DC_BROKER down -v >/dev/null 2>&1 || true
 $DC_BROKER up -d --build >/dev/null 2>&1 || true
@@ -57,8 +57,11 @@ start_metrics_collector "$OUT" 1
 # Restart ingestion sa novim env (force recreate)
 $DC_BROKER up -d --force-recreate ingestion >/dev/null 2>&1 || true
 
-# Sačeka da ingestion završi (DURATION_S + 5s buffer)
-sleep $((DURATION_S + 5))
+# Sačeka ingestion završi. Ingestion drži kontejner živim još 5s posle
+# scheduler-a (Program.cs Task.Delay 5s) da Kestrel odgovori na /metrics
+# scrape. Spavamo DURATION_S + 2 da scrape padne sredinom tog prozora —
+# nikako DURATION_S + 5+ (tada je ingestion već izašao).
+sleep $((DURATION_S + 2))
 
 # Zaustavi metrics i sačuvaj logove
 stop_metrics_collector "$OUT"
@@ -67,7 +70,7 @@ save_logs "$OUT"
 
 # Pokušaj scrape /metrics pre nego što se ingestion završi
 curl -sf "http://localhost:9091/metrics" > "$OUT/ingest_metrics.txt" 2>/dev/null || true
-curl -sf "http://localhost:9092/metrics" > "$OUT/storage_metrics.txt" 2>/dev/null || true
+curl -sf "http://localhost:9093/metrics" > "$OUT/storage_metrics.txt" 2>/dev/null || true
 curl -sf "http://localhost:9090/metrics" > "$OUT/analytics_metrics.txt" 2>/dev/null || true
 
 # Down stack

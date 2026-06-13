@@ -27,7 +27,7 @@ else
     export DB_ENABLED=true
 fi
 
-DC_BROKER="docker compose -f $COMPOSE_DIR/compose.yaml -f $COMPOSE_DIR/compose.${BROKER}.yaml"
+DC_BROKER="$(dc_for "$BROKER")"
 echo "[1/4] Pokrećem stack..."
 $DC_BROKER down -v >/dev/null 2>&1 || true
 $DC_BROKER up -d --build >/dev/null 2>&1 || true
@@ -60,7 +60,7 @@ echo "Cool-down from $COOL_START to $COOL_END" | tee -a "$OUT/timing.log"
 
 # Sačuvaj logove
 save_logs "$OUT"
-curl -sf "http://localhost:9092/metrics" > "$OUT/storage_metrics.txt" 2>/dev/null || true
+curl -sf "http://localhost:9093/metrics" > "$OUT/storage_metrics.txt" 2>/dev/null || true
 
 $DC_BROKER down -v >/dev/null 2>&1 || true
 

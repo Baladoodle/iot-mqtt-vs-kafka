@@ -31,7 +31,7 @@ else
     export DB_ENABLED=true
 fi
 
-DC_BROKER="docker compose -f $COMPOSE_DIR/compose.yaml -f $COMPOSE_DIR/compose.${BROKER}.yaml"
+DC_BROKER="$(dc_for "$BROKER")"
 echo "[1/5] Pokrećem stack..."
 $DC_BROKER down -v >/dev/null 2>&1 || true
 $DC_BROKER up -d --build >/dev/null 2>&1 || true

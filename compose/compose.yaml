@@ -32,6 +32,13 @@ services:
       context: ../services/ingestion
       dockerfile: Dockerfile
     container_name: ${COMPOSE_PROJECT_NAME:-iots-proj2}-ingestion
+    # docker compose v2 NE učitava .env iz project root-a po defaultu — traži
+    # ga u direktorijumu PRVOG compose fajla (compose/). Forsiramo učitavanje
+    # iz project root-a da bi STORAGE_METRICS_PORT (i ostali env) zaista
+    # stigli do kontejnera. Bez ovoga STORAGE_METRICS_PORT=9093 u .env se
+    # ignoriše i storage dobija default 9092 → kolizija sa Kafka brokerom.
+    env_file:
+      - ../.env
     environment:
       # Broker specifično (preklapaju se u overlay fajlovima)
       BROKER: ${BROKER:-mqtt}
@@ -73,6 +80,8 @@ services:
       context: ../services/storage
       dockerfile: Dockerfile
     container_name: ${COMPOSE_PROJECT_NAME:-iots-proj2}-storage
+    env_file:
+      - ../.env
     environment:
       BROKER: ${BROKER:-mqtt}
       # MQTT
@@ -103,6 +112,8 @@ services:
       context: ../services/analytics
       dockerfile: Dockerfile
     container_name: ${COMPOSE_PROJECT_NAME:-iots-proj2}-analytics
+    env_file:
+      - ../.env
     environment:
       BROKER: ${BROKER:-mqtt}
       MQTT_URL: ${MQTT_URL:-mosquitto}
