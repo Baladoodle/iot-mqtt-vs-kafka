@@ -1,6 +1,7 @@
 using System.Globalization;
 using CsvHelper;
 using CsvHelper.Configuration;
+using CsvHelper.TypeConversion;
 using IoTIngestion.Payloads;
 
 namespace IoTIngestion.Replay;
@@ -78,7 +79,43 @@ public sealed class CsvReader
             Map(m => m.WorldPositionZ).Name("worldPositionZ");
             Map(m => m.Speed).Name("speed");
             Map(m => m.EngineTemperature).Name("engineTemperature");
-            Map(m => m.TyresSurfaceTemperature).Name("tyresSurfaceTemperature");
+            // tyresSurfaceTemperature u Data.csv je "1 vrednost po pneumatiku,
+            // razdvojeno kosom crtom" (npr. 84/84/89/89). Uzimamo MAX jer
+            // alerting hoće da zna da li je BILO KOJI pneumatik vruć.
+            Map(m => m.TyresSurfaceTemperature)
+                .Name("tyresSurfaceTemperature")
+                .TypeConverter<MultiValueFloatMaxConverter>();
+        }
+    }
+
+    /// <summary>
+    /// CsvHelper konverter za kolone čija je vrednost u Data.csv zapisana kao
+    /// "a/b/c/d" (npr. temperature/pressurei po pneumatiku). Regularne float
+    /// vrednosti propušta; za slash-separated uzima MAX da bi alerting i dalje
+    /// detektovao pregorele pneumatike.
+    /// </summary>
+    private sealed class MultiValueFloatMaxConverter : DefaultTypeConverter
+    {
+        public override object ConvertFromString(
+            string? text, IReaderRow row, MemberMapData memberMapData)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return 0f;
+
+            if (!text.Contains('/'))
+            {
+                return float.Parse(text, NumberStyles.Float, CultureInfo.InvariantCulture);
+            }
+
+            float max = float.MinValue;
+            foreach (var part in text.Split('/'))
+            {
+                if (float.TryParse(part, NumberStyles.Float, CultureInfo.InvariantCulture, out var v)
+                    && v > max)
+                {
+                    max = v;
+                }
+            }
+            return max == float.MinValue ? 0f : max;
         }
     }
 }
