@@ -1,0 +1,7 @@
+alerts,analytics_emitted,analytics_throughput,batches,broker,dropped,duration_s,e2e_latency_s,emitted,first_alert_after_reconnect,ingest_emitted,ingest_throughput,last_mean,level,num_devices,peak_backlog,persisted,received,recovery_s,run_id,storage_emitted,storage_lag_ms,storage_p95_lag_ms,storage_throughput,total_cpu_avg,total_mem_mb_avg
+0,,,830,kafka,0,,,,,,,,,,8,107075,107083,,scenario-C-kafka-20260614-152503,107083.0,6.0,21.0,0,0,0
+0,0,0,0,kafka,0,,,,,0,0,,,,,0,0,,scenario-C-kafka-20260614-182843,0,,,0,54.97,579.08
+15,0,0,832,kafka,0,,,,,3005.0,0.0,91.4,,,343,107246,107250,,scenario-C-kafka-20260614-183640,107250.0,6.0,22.0,0,52.94,715.07
+0,,,844,mqtt,0,,,,,,,,,,4,107001,107005,,scenario-C-mqtt-20260614-133527,107005.0,7.0,22.0,0,0,0
+0,0,0,0,mqtt,0,,,,,1788.0,0.0,,,,0,0,0,,scenario-C-mqtt-20260614-182832,0,,,0,66.48,554.23
+15,0,0,845,mqtt,0,,,,,3006.0,0.0,91.45,,,339,107000,107010,,scenario-C-mqtt-20260614-183308,107010.0,6.0,25.0,0,35.77,191.6

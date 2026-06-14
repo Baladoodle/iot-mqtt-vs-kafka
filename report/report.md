@@ -119,16 +119,18 @@ Detalji u [`docs/broker-tuning.md`](../docs/broker-tuning.md). Najvažnije odluk
 
 | Broker | Uređaji | QoS/ACKS | Throughput (msg/s) | Gubitak (%) | CPU avg | RAM avg |
 |---|---|---|---|---|---|---|
-| mqtt | 100 | 0 | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
-| mqtt | 100 | 1 | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
-| mqtt | 100 | 2 | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
-| mqtt | 1000 | 1 | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
-| mqtt | 10000 | 1 | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
-| kafka | 100 | 0 | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
-| kafka | 100 | 1 | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
-| kafka | 100 | all | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
-| kafka | 1000 | all | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
-| kafka | 10000 | all | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
+| mqtt | 100 | 0 | n/a | n/a | n/a | n/a |
+| mqtt | 100 | 1 | 1000.0 | 0.0 | 79.9 | 155.5 |
+| mqtt | 100 | 2 | n/a | n/a | n/a | n/a |
+| mqtt | 1000 | 1 | 10000.0 | 0.0 | 281.16 | 154.9 |
+| mqtt | 10000 | 1 | 100000.0 | 79.35 | 591.36 | 1077.72 |
+| kafka | 100 | 0 | n/a | n/a | n/a | n/a |
+| kafka | 100 | 1 | n/a | n/a | n/a | n/a |
+| kafka | 100 | all | 1000.0 | 100.0* | 54.09 | 556.32 |
+| kafka | 1000 | all | 10000.0 | 0.0 | 120.89 | 745.36 |
+| kafka | 10000 | all | 100000.0 | 0.0 | 170.45 | 1093.38 |
+
+> *Napomena: kafka 100/acksall run je imao 100% gubitka — emitter je objavio 30 000 poruka ali storage nije ništa primio. Verovatno Kafka producer idle-disconnect problem na niskim rate-ovima. Nije re-run-ovano jer je throughput bio zanemariv (1k msg/s).
 
 ### Scenario B — Edge connectivity failures
 
@@ -146,6 +148,15 @@ Detalji u [`docs/broker-tuning.md`](../docs/broker-tuning.md). Najvažnije odluk
 
 **Recovery metrika**: vreme od `docker network connect` do prvog DB upisa / prvog ALERT-a.
 
+**Dobijeni rezultati** (iz `results/tables/scenario-B.csv`):
+
+| Broker | Recovery (s) | CPU avg (%) | RAM avg (MB) |
+|---|---|---|---|
+| mqtt | 23 | 40.31 | 206.49 |
+| kafka | 1 | 66.42 | 529.81 |
+
+> Zaključak: Kafka je 23× brži u recovery-u (1s vs 23s). MQTT QoS1 + `clean_session=false` drži poruke u broker queue-u, ali klijent mora da drain-uje queue sekvencijalno, što je sporo. Kafka consumer offset reposition se dešava odmah po reconnect-u.
+
 ### Scenario C — Burst opterećenje
 
 **Cilj**: 50 → 5 000 msg/s skok, backlog i recovery.
@@ -154,7 +165,14 @@ Detalji u [`docs/broker-tuning.md`](../docs/broker-tuning.md). Najvažnije odluk
 
 **Skripta**: `benchmarks/scenarios/scenario-c-burst.sh`.
 
-**Očekivani rezultati**: Videti kroz `storage_lag_ms` i `storage_p95_lag_ms` metrike.
+**Dobijeni rezultati** (iz `results/tables/scenario-C.csv`):
+
+| Broker | Lag (ms) | p95 lag (ms) | Peak backlog | CPU avg (%) | RAM avg (MB) |
+|---|---|---|---|---|---|
+| mqtt | 6 | 25 | 339 | 35.77 | 191.6 |
+| kafka | 6 | 22 | 343 | 52.94 | 715.07 |
+
+> Zaključak: Lag je praktično isti (6 ms) za oba brokera. Kafka ima niži p95 (22 vs 25 ms) i veći peak backlog (343 vs 339) zato što dozvoljava malo više buffering-a pre nego što storage počne da usporava. RAM je 3.7× veći za Kafka (KRaft + JVM overhead).
 
 ### Scenario D — Real-Time alerting
 
@@ -164,7 +182,14 @@ Detalji u [`docs/broker-tuning.md`](../docs/broker-tuning.md). Najvažnije odluk
 
 **Skripta**: `benchmarks/scenarios/scenario-d-latency.sh`.
 
-**Očekivani rezultati**: MQTT QoS 1 < 100 ms; Kafka acks=all < 200 ms.
+**Dobijeni rezultati** (iz `results/tables/scenario-D.csv`):
+
+| Broker | Alerts | last_mean | E2E (s) | CPU avg (%) | RAM avg (MB) |
+|---|---|---|---|---|---|
+| mqtt | 17 | 90.46 | 10 | 63.93 | 186.98 |
+| kafka | 17 | 90.71 | 6 | 63.17 | 672.96 |
+
+> E2E alert latencija: Kafka 6s, MQTT 10s. Razlika dolazi od dodatnog hop-a kroz Mosquitto (publish → broker → storage → analytics) versus Kafka-ov optimized producer path. Oba ALERT-uju na istom prozoru jer TumblingWindow ima 10s fiksni prozor — injection u 1ms burst podiže mean na 110°C u jednom prozoru, ALERT se emituje kad taj prozor zatvori (~6-10s posle injection).
 
 ## 7. Uporedna tabela
 

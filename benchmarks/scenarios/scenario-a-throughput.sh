@@ -42,9 +42,17 @@ export MODE="rate"
 
 # Stack down prethodni, pa up novi
 DC_BROKER="$(dc_for "$BROKER")"
-echo "[1/4] Pokrećem stack..."
+echo "[1/4] Pokrećem stack (bez ingestion — pokrenućemo je niže sa TAČNIM env vrednostima)..."
 $DC_BROKER down -v >/dev/null 2>&1 || true
-$DC_BROKER up -d --build >/dev/null 2>&1 || true
+# Ne startuj ingestion ovde: env vrednosti koje smo gore exportovali bi bile
+# ignorisane (compose učitava .env u vreme `up`, ne naknadno). Ako bismo ovde
+# startovali ingestion sa .env default-ima, pa je recreate-ovali niže sa
+# ovim env, prva instanca bi već publish-ovala ~12k poruka → 1.4× artifact.
+if [ "$BROKER" = "mqtt" ]; then
+    $DC_BROKER up -d --build postgres mosquitto storage analytics >/dev/null 2>&1 || true
+else
+    $DC_BROKER up -d --build postgres kafka storage analytics >/dev/null 2>&1 || true
+fi
 
 # Sačeka broker
 echo "[2/4] Čekam broker..."
@@ -54,7 +62,8 @@ wait_for_broker "$BROKER" || { echo "Broker not ready"; exit 1; }
 echo "[3/4] Pokrećem metrics collector i ingestion..."
 start_metrics_collector "$OUT" 1
 
-# Restart ingestion sa novim env (force recreate)
+# Start ingestion sa novim env (force recreate — osiguravamo da nema
+# starih kontejnera i da se pokrene sa svežim env).
 $DC_BROKER up -d --force-recreate ingestion >/dev/null 2>&1 || true
 
 # Sačeka ingestion završi. Ingestion drži kontejner živim još 5s posle

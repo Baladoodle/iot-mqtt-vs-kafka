@@ -82,6 +82,7 @@ public sealed class Scheduler
 
         long emitted = 0;
         var sw2 = Stopwatch.StartNew();
+        bool injected = false;
 
         // Učitaj sve redove u memoriju (rate mode ne zavisi od sessionTime)
         var rows = new List<CsvReader.CsvRow>();
@@ -95,28 +96,54 @@ public sealed class Scheduler
         long intervalMicros = 1_000_000 / _ratePerSec;  // razmak između poruka
         int rowIdx = 0;
 
-        while (emitted < totalToEmit && !ct.IsCancellationRequested)
+        try
         {
-            var row = rows[rowIdx % rows.Count];
-            rowIdx++;
-            // emitted je long; IReadOnlyList indexer prima int.
-            var device = devices[(int)(emitted % devices.Count)];
-
-            var payload = BuildPayload(row, device);
-            await publishAsync(payload).ConfigureAwait(false);
-            emitted++;
-
-            // Ograničenje brzine
-            long targetMicros = emitted * intervalMicros;
-            long actualMicros = sw2.ElapsedTicks * 1_000_000 / Stopwatch.Frequency;
-            long sleepMicros = targetMicros - actualMicros;
-            if (sleepMicros > 0)
+            while (emitted < totalToEmit && !ct.IsCancellationRequested)
             {
-                await Task.Delay(TimeSpan.FromMicroseconds(sleepMicros), ct).ConfigureAwait(false);
+                var row = rows[rowIdx % rows.Count];
+                rowIdx++;
+                // emitted je long; IReadOnlyList indexer prima int.
+                var device = devices[(int)(emitted % devices.Count)];
+
+                // INJECT_HIGH_TEMP: u rate modu se aktivira posle _injectAtSec sekundi
+                // wall-clock vremena schedulera. Inject-uje 100 eventa sa
+                // engineTemperature=1500°C u jednoj sekundi (isti device, isti
+                // TEmit okvir) da bi analytics-ov 10s prozor značajno podigao
+                // mean i ispalio ALERT. Za A/B/C se ne koristi.
+                if (_injectHighTemp && !injected && sw2.Elapsed.TotalSeconds >= _injectAtSec)
+                {
+                    injected = true;
+                    _logger.LogWarning(
+                        "INJECT_HIGH_TEMP: emitting 100 critical events (engineTemp=1500) at +{Sec:F1}s of replay time (target +{Target}s) device={DeviceId}",
+                        sw2.Elapsed.TotalSeconds, _injectAtSec, device.DeviceId);
+                    var injectTime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                    for (int i = 0; i < 100; i++)
+                    {
+                        var critical = BuildPayload(row, device);
+                        critical.EngineTemperature = 1500.0f;
+                        critical.TEmit = injectTime + i;  // 1ms razmaka, svi u istom 10s prozoru
+                        await publishAsync(critical).ConfigureAwait(false);
+                    }
+                }
+
+                var payload = BuildPayload(row, device);
+                await publishAsync(payload).ConfigureAwait(false);
+                emitted++;
+
+                // Ograničenje brzine
+                long targetMicros = emitted * intervalMicros;
+                long actualMicros = sw2.ElapsedTicks * 1_000_000 / Stopwatch.Frequency;
+                long sleepMicros = targetMicros - actualMicros;
+                if (sleepMicros > 0)
+                {
+                    await Task.Delay(TimeSpan.FromMicroseconds(sleepMicros), ct).ConfigureAwait(false);
+                }
             }
         }
-
-        _logger.LogInformation("Rate mode završen: emitted={Emitted}/{Total}", emitted, totalToEmit);
+        finally
+        {
+            _logger.LogInformation("Rate mode završen: emitted={Emitted}/{Total}", emitted, totalToEmit);
+        }
     }
 
     private async Task RunRealtimeAsync(
@@ -126,35 +153,69 @@ public sealed class Scheduler
     {
         long emitted = 0;
         long lastEmitMs = -1;
+        var swInject = Stopwatch.StartNew();
+        bool injected = false;
 
-        // Skup svih uređaja, replay po uređaju
-        foreach (var device in devices)
+        try
         {
-            long prevSessionMs = 0;
-            foreach (var row in _reader.Read())
+            // Skup svih uređaja, replay po uređaju
+            foreach (var device in devices)
             {
-                if (ct.IsCancellationRequested) break;
-
-                long sessionMs = (long)(row.SessionTime * 1000 / _timeScale);
-                long wait = sessionMs - prevSessionMs;
-                if (wait > 0)
+                long prevSessionMs = 0;
+                foreach (var row in _reader.Read())
                 {
-                    await Task.Delay((int)Math.Min(wait, 1000), ct).ConfigureAwait(false);
-                }
-                prevSessionMs = sessionMs;
+                    if (ct.IsCancellationRequested) break;
 
-                var payload = BuildPayload(row, device);
-                await publishAsync(payload).ConfigureAwait(false);
-                emitted++;
+                    long sessionMs = (long)(row.SessionTime * 1000 / _timeScale);
+                    long wait = sessionMs - prevSessionMs;
+                    if (wait > 0)
+                    {
+                        await Task.Delay((int)Math.Min(wait, 1000), ct).ConfigureAwait(false);
+                    }
+                    prevSessionMs = sessionMs;
 
-                if (_durationMs > 0 && lastEmitMs < 0)
-                {
-                    lastEmitMs = sessionMs;
+                    // INJECT_HIGH_TEMP: u realtime modu aktiviramo jednom kada
+                    // _injectAtSec sekundi wall-clock vremena scheduler-a
+                    // protekne. Inject-ujemo 100 eventa sa engineTemperature=
+                    // 1500°C u jednoj sekundi (isti device, susedni TEmit)
+                    // da bi analytics-ov 10s prozor dobio dovoljno kritičnih
+                    // vrednosti da mu mean pređe ALERT_THRESHOLD=50°C.
+                    if (_injectHighTemp && !injected && swInject.Elapsed.TotalSeconds >= _injectAtSec)
+                    {
+                        injected = true;
+                        _logger.LogWarning(
+                            "INJECT_HIGH_TEMP: emitting 100 critical events (engineTemp=1500) at +{Sec:F1}s of replay time (target +{Target}s) device={DeviceId}",
+                            swInject.Elapsed.TotalSeconds, _injectAtSec, device.DeviceId);
+                        var injectTime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                        for (int i = 0; i < 100; i++)
+                        {
+                            var critical = BuildPayload(row, device);
+                            critical.EngineTemperature = 1500.0f;
+                            critical.TEmit = injectTime + i;  // 1ms razmaka, svi u istom 10s prozoru
+                            await publishAsync(critical).ConfigureAwait(false);
+                        }
+                    }
+
+                    var payload = BuildPayload(row, device);
+                    await publishAsync(payload).ConfigureAwait(false);
+                    emitted++;
+
+                    if (_durationMs > 0 && lastEmitMs < 0)
+                    {
+                        lastEmitMs = sessionMs;
+                    }
+                    if (lastEmitMs > 0 && sessionMs - lastEmitMs >= _durationMs) break;
                 }
-                if (lastEmitMs > 0 && sessionMs - lastEmitMs >= _durationMs) break;
             }
         }
-        _logger.LogInformation("Realtime mode završen: emitted={Emitted}", emitted);
+        finally
+        {
+            // finally blok garantuje log i pri cancellation-u (npr. kada
+            // scenario-d-latency.sh prekine ingestion pre nego što prirodno
+            // završi). Bez ovoga parse_ingest_log u report generatoru ne
+            // može da izvuče emitted.
+            _logger.LogInformation("Realtime mode završen: emitted={Emitted}", emitted);
+        }
     }
 
     private TelemetryEvent BuildPayload(

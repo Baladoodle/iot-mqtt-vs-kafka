@@ -58,14 +58,23 @@ services:
   ingestion:
     environment:
       BROKER: kafka
+    depends_on:
+      kafka:
+        condition: service_healthy
 
   storage:
     environment:
       BROKER: kafka
+    depends_on:
+      kafka:
+        condition: service_healthy
 
   analytics:
     environment:
       BROKER: kafka
+    depends_on:
+      kafka:
+        condition: service_healthy
 
 volumes:
   kafka_data:

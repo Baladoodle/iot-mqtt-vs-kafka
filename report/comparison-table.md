@@ -7,17 +7,26 @@ Stupci: Throughput (msg/s), gubitak (%), prosečni CPU (%), prosečni RAM (MB), 
 
 | Broker | Uređaji | QoS/ACKS | Throughput (msg/s) | Gubitak (%) | CPU avg (%) | RAM avg (MB) |
 |---|---|---|---|---|---|---|
-| kafka | 100 | acks0 | 1000.0 | n/a | 58.52 | 523.24 |
-| kafka | 100 | acks1 | 1000.0 | n/a | 53.6 | 527.16 |
-| kafka | 1000 | acksall | 10000.0 | n/a | 63.15 | 603.95 |
-| kafka | 10000 | acksall | 100000.0 | n/a | 84.51 | 880.08 |
-| mqtt | 100 | qos0 | 1000.0 | n/a | 50.48 | 144.47 |
-| mqtt | 100 | qos1 | 1000.0 | n/a | 81.35 | 187.23 |
-| mqtt | 100 | qos2 | 1000.0 | n/a | 102.38 | 157.29 |
-| mqtt | 1000 | qos1 | 10000.0 | n/a | 283.48 | 155.9 |
-| mqtt | 10000 | qos1 | 100000.0 | n/a | 574.91 | 1013.63 |
+| kafka | 10000 | acksall | 100000.0 | 0.0 | 170.45 | 1093.38 |
+| mqtt | 10000 | qos1 | 100000.0 | 79.35 | 591.36 | 1077.72 |
 
-## Scenario D — E2E latencija
+## Scenario B — Disconnect / Recovery
 
-| Broker | Alerts | last_mean | CPU avg | RAM avg |
-|---|---|---|---|---|
+| Broker | Uređaji | Trajanje (s) | Recovery (s) | E2E (s) | ALERT nakon reconnect | CPU avg (%) | RAM avg (MB) |
+|---|---|---|---|---|---|---|---|
+| kafka | n/a | None | 1 | None | None | 66.42 | 529.81 |
+| mqtt | n/a | None | 23 | None | None | 40.31 | 206.49 |
+
+## Scenario C — Burst / Backlog
+
+| Broker | Uređaji | Trajanje (s) | Lag (ms) | p95 lag (ms) | Peak backlog | CPU avg (%) | RAM avg (MB) |
+|---|---|---|---|---|---|---|---|
+| kafka | n/a | None | 6 | 22 | 343 | 52.94 | 715.07 |
+| mqtt | n/a | None | 6 | 25 | 339 | 35.77 | 191.6 |
+
+## Scenario D — E2E latencija (alert)
+
+| Broker | Alerts | last_mean | E2E (s) | CPU avg (%) | RAM avg (MB) |
+|---|---|---|---|---|---|
+| kafka | 17 | 90.71 | 6 | 63.17 | 672.96 |
+| mqtt | 17 | 90.46 | 10 | 63.93 | 186.98 |

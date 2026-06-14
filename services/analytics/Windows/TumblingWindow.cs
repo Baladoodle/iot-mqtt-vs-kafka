@@ -59,7 +59,13 @@ public sealed class TumblingWindow
             return false;
         }
 
-        // Ažuriraj current window key
+        // Ažuriraj current window key.
+        // BUGFIX: originalna logika je imala uslov `oldCurrent >= 0 && key > oldCurrent`
+        // u oba grana, što znači da se _currentWindowKey NIKADA nije
+        // inicijalizovao na ključ prvog eventa (jer je oldCurrent == -1).
+        // Posledica: nijedan prozor nikad nije zatvoren, ALERT se nikad ne
+        // emituje, gauge 'analytics_window_mean_engine_temp' ostaje 0.
+        // Fix: u else grani (oldCurrent < 0) postavimo ključ na trenutni.
         long oldCurrent, initialCurrent;
         do
         {
@@ -75,8 +81,15 @@ public sealed class TumblingWindow
                     break;
                 }
             }
+            else if (oldCurrent < 0)
+            {
+                // Prvi event ikad — inicijalizuj currentWindowKey na njegov ključ
+                initialCurrent = Interlocked.CompareExchange(ref _currentWindowKey, key, oldCurrent);
+                break;
+            }
             else
             {
+                // Isti ključ kao current — samo dodaj event
                 initialCurrent = oldCurrent;
                 break;
             }

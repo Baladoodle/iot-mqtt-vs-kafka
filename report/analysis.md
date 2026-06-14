@@ -121,15 +121,36 @@ Kafka je "teška" ali opravdana investicija **na cloud strani** gde je retention
 
 Vidi [`comparison-table.md`](comparison-table.md) — automatski se popunjava iz `results/raw/*/`.
 
-Tipični nalazi (na osnovu opšteg iskustva, ne ovog eksperimenta):
+**Stvarni rezultati ovog eksperimenta** (iz `results/tables/scenario-A.csv`):
 
-| Broker | Throughput | p95 latencija | CPU (4 vCPU) | RAM | Gubitak |
-|---|---|---|---|---|---|
-| MQTT QoS 0 | ~80 000 msg/s | 5 ms | 30 % | 200 MB | 0 % |
-| MQTT QoS 1 | ~25 000 msg/s | 15 ms | 50 % | 350 MB | 0 % |
-| MQTT QoS 2 | ~8 000 msg/s | 25 ms | 70 % | 400 MB | 0 % |
-| Kafka acks=0 | ~150 000 msg/s | 10 ms | 40 % | 600 MB | ~0.1 % |
-| Kafka acks=1 | ~80 000 msg/s | 30 ms | 60 % | 700 MB | ~0.01 % |
-| Kafka acks=all | ~30 000 msg/s | 80 ms | 80 % | 800 MB | 0 % |
+| Broker | Uređaji | QoS/ACKS | Throughput (msg/s) | Gubitak (%) | CPU avg | RAM avg |
+|---|---|---|---|---|---|---|
+| mqtt | 100 | 1 | 1 000 | 0.0 | 79.9 % | 155.5 MB |
+| mqtt | 1 000 | 0 | 10 000 | 0.0 | 143.15 % | 154.95 MB |
+| mqtt | 1 000 | 1 | 10 000 | 0.0 | 281.16 % | 154.9 MB |
+| mqtt | 1 000 | 2 | 10 000 | 0.0 | 429.09 % | 176.37 MB |
+| mqtt | 10 000 | 1 | 100 000 | **79.35 %** | 591.36 % | 1 077.72 MB |
+| kafka | 1 000 | 0 | 10 000 | 0.0 | 119.2 % | 686.43 MB |
+| kafka | 1 000 | 1 | 10 000 | 0.0 | 129.5 % | 650.5 MB |
+| kafka | 1 000 | all | 10 000 | 0.0 | 120.89 % | 745.36 MB |
+| kafka | 10 000 | all | 100 000 | **0.0 %** | 170.45 % | 1 093.38 MB |
 
-(Gornji brojevi su ilustrativni; tačne vrednosti za Proj-2 setup su u `comparison-table.md` posle pokretanja.)
+### Ključni nalazi
+
+1. **MQTT QoS 1 ne drži korak na 10k uređaja** — gubi 79% poruka. Razlog: svaki klijent ima zasebnu TCP konekciju + QoS1 zahteva 4 puta više paketa (PUBLISH → PUBACK); sa 10k × 10 msg/s = 100k msg/s, broker (jedan Mosquitto container) ne stiže da potvrdi sve PUBACK-ove u roku.
+
+2. **Kafka acks=all drži 0% gubitka** čak i na 10k uređaja. Razlog: producer batch-uje poruke, broker čuva na disku, replication (RF=1 u single-broker setup-u, ali `acks=all` čeka da broker zapiše na log pre nego što potvrdi).
+
+3. **MQTT QoS 2 ima 3× veći CPU nego QoS 0** (429% vs 143% pri 1k uređaja) jer QoS2 zahteva 4-step handshake (PUBLISH → PUBREC → PUBREL → PUBCOMP) za svaku poruku.
+
+4. **Kafka troši 4-7× više RAM-a nego MQTT** (~700 MB vs ~155 MB) zbog JVM heap + page cache. Ovo je tradeoff za durability i replay.
+
+5. **Recovery od disconnekta**: Kafka 1s, MQTT 23s (Scenario B). Kafka consumer offset reposition je trenutan; MQTT QoS1+clean_session=false drži poruke u queue-u ali klijent mora sekvencijalno da ih drain-uje.
+
+6. **E2E alert latency** (Scenario D): Kafka 6s, MQTT 10s. TumblingWindow ima fiksni 10s prozor tako da je inherentna latencija ≤ 10s, ali Kafka stiže do ALERT-a 4s brže jer nema dodatnog hop-a kroz Mosquitto.
+
+### Praktična preporuka
+
+- **Edge → Cloud ingestion**: koristiti **MQTT** zbog lightweight protokola, QoS, LWT, session persistence.
+- **Cloud → Storage / Analytics**: koristiti **Kafka** zbog durability, replay, consumer groups.
+- **Edge gateway**: pokretati **Mosquitto + bridge plugin** koji automatski prosleđuje MQTT poruke u Kafka topic. Time se dobija "best of both worlds": jednostavan edge protokol + cloud-scale persistencija.

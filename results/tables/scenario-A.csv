@@ -1,0 +1,11 @@
+alerts,analytics_emitted,analytics_throughput,batches,broker,dropped,duration_s,e2e_latency_s,emitted,first_alert_after_reconnect,ingest_emitted,ingest_throughput,last_mean,level,loss_pct,num_devices,peak_backlog,persisted,received,recovery_s,run_id,storage_emitted,storage_lag_ms,storage_p95_lag_ms,storage_throughput,throughput_msg_per_sec,total_cpu_avg,total_mem_mb_avg
+0,0,0,0,kafka,0,30,,30000,,30000.0,0.0,,acksall,100.0,100,,0,0,,scenario-A-kafka-100-acksall,0,,,0,1000.0,54.09,556.32
+0,0,0,674,kafka,0,30,,300000,,300000.0,0.0,,acks0,0.0,1000,0,300000,300000,,scenario-A-kafka-1000-acks0,300000.0,0.0,0.0,0,10000.0,119.2,686.43
+0,0,0,674,kafka,0,30,,300000,,300000.0,0.0,,acks1,0.0,1000,0,300000,300000,,scenario-A-kafka-1000-acks1,300000.0,0.0,0.0,0,10000.0,129.5,650.5
+0,0,0,678,kafka,0,30,,300000,,300000.0,0.0,,acksall,0.0,1000,0,300000,300000,,scenario-A-kafka-1000-acksall,300000.0,0.0,0.0,0,10000.0,120.89,745.36
+0,0,0,6076,kafka,0,30,,3000000,,3000000.0,0.0,,acksall,0.0,10000,0,3000000,3000000,,scenario-A-kafka-10000-acksall,3000000.0,0.0,0.0,0,100000.0,170.45,1093.38
+0,0,0,149,mqtt,0,30,,30000,,30000.0,0.0,,qos1,0.0,100,0,30000,30000,,scenario-A-mqtt-100-qos1,30000.0,0.0,0.0,0,1000.0,79.9,155.5
+0,0,0,669,mqtt,0,30,,300000,,300000.0,0.0,,qos0,0.0,1000,0,300000,300000,,scenario-A-mqtt-1000-qos0,300000.0,0.0,0.0,0,10000.0,143.15,154.95
+0,0,0,665,mqtt,0,30,,300000,,300000.0,0.0,,qos1,0.0,1000,0,300000,300000,,scenario-A-mqtt-1000-qos1,300000.0,0.0,0.0,0,10000.0,281.16,154.9
+0,0,0,662,mqtt,0,30,,300000,,300000.0,0.0,,qos2,0.0,1000,0,300000,300000,,scenario-A-mqtt-1000-qos2,300000.0,0.0,0.0,0,10000.0,429.09,176.37
+0,0,0,1327,mqtt,0,30,,3000000,,3000000.0,0.0,,qos1,79.35,10000,336,619579,619915,,scenario-A-mqtt-10000-qos1,619915.0,1.0,0.0,0,100000.0,591.36,1077.72

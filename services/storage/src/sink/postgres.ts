@@ -56,6 +56,12 @@ export class PostgresSink {
 
     /**
      * Upisuje batch u jednom upitu. Vraća broj uspešno upisanih redova.
+     *
+     * Implementacioni detalj: preferira se multi-VALUES (jedan round-trip za
+     * ceo batch), ali ako Npgsql prijavi protocol-level grešku tipa
+     * "bind message has N parameter formats but 0 parameters" (primećeno u
+     * Kafka scenariju B posle ~18k batcheva), fallback-ujemo na per-row
+     * INSERT u transakciji. Sporije, ali ne gubi batch.
      */
     async writeBatch(events: TelemetryEvent[]): Promise<number> {
         if (events.length === 0) return 0;
@@ -87,12 +93,74 @@ export class PostgresSink {
 
         const sql = `INSERT INTO telemetry (${cols}) VALUES ${placeholders.join(',')}`;
         try {
+            // Defensive sanity check: placeholders i values MORAJU biti u
+            // saglasnosti. Ako nisu (npr. kolekcija parcijalno popunjena),
+            // ne šaljemo pokvaren upit — fallback-ujemo na per-row.
+            // placeholders.length = events.length (jedan "(...)" string po redu)
+            // values.length = events.length * 14 (14 $N referenci po redu)
+            const expectedValues = events.length * 14;
+            if (placeholders.length !== events.length || values.length !== expectedValues) {
+                throw new Error(
+                    `values/placeholders mismatch: placeholders=${placeholders.length}, values=${values.length}, expected ${expectedValues}`,
+                );
+            }
             const r = await this.client.query(sql, values);
             metrics.persisted.inc(r.rowCount ?? events.length);
             return r.rowCount ?? events.length;
         } catch (err) {
+            // Per-row fallback: izbegava Npgsql "0 parameters" bind grešku.
+            // Sporije (N round-trip-ova) ali ne gubi batch.
+            const msg = (err as Error).message;
+            log.warn(
+                { err: msg, batch: events.length },
+                'Multi-VALUES insert failed, falling back to per-row INSERT',
+            );
+            return await this.writeRowsOneByOne(events, tPersist);
+        }
+    }
+
+    /**
+     * Per-row INSERT u transakciji. Koristi se kao fallback kad multi-VALUES
+     * putanja pukne (Npgsql bind bug, edge case u pg drajveru).
+     */
+    private async writeRowsOneByOne(
+        events: TelemetryEvent[],
+        tPersist: Date,
+    ): Promise<number> {
+        const cols = 'device_id, pilot_index, replica, "sessionTime", "frameIdentifier", "speed", "engineTemperature", "tyresSurfaceTemperature", "worldPositionX", "worldPositionY", "worldPositionZ", t_emit, t_persist, payload';
+        const sql = `INSERT INTO telemetry (${cols}) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, to_timestamp($12), to_timestamp($13), $14)`;
+
+        try {
+            await this.client.query('BEGIN');
+            for (const e of events) {
+                const v = [
+                    e.device_id,
+                    e.pilot_index,
+                    e.replica ?? 0,
+                    e.sessionTime,
+                    e.frameIdentifier,
+                    e.speed,
+                    e.engineTemperature,
+                    e.tyresSurfaceTemperature,
+                    e.worldPositionX,
+                    e.worldPositionY,
+                    e.worldPositionZ,
+                    e.t_emit / 1000,
+                    tPersist.getTime() / 1000,
+                    JSON.stringify(e),
+                ];
+                await this.client.query(sql, v);
+            }
+            await this.client.query('COMMIT');
+            metrics.persisted.inc(events.length);
+            return events.length;
+        } catch (err) {
+            await this.client.query('ROLLBACK').catch(() => { /* ignore */ });
             metrics.dropped.inc(events.length);
-            log.error({ err: (err as Error).message, batch: events.length }, 'Postgres batch failed');
+            log.error(
+                { err: (err as Error).message, batch: events.length },
+                'Per-row INSERT fallback failed',
+            );
             throw err;
         }
     }
