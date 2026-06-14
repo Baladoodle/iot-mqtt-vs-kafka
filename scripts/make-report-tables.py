@@ -218,6 +218,52 @@ def main():
         "D": [],
     }
 
+    def _validate_run(r: dict) -> tuple:
+        """Sanity-check parsed run. Vraća (True, "") ako je OK, inače (False, razlog).
+
+        Pravila (defanzivno — svaki pass hvata drugu klasu grešaka):
+          - e2e_latency_s < 0            → E2E nikad ne može biti negativan
+          - e2e_latency_s > duration_s   → E2E > scenario duration = nemoguće
+          - recovery_s == 'timeout'      → recovery polling istekao
+          - recovery_s > 60              → recovery > 60s = timeout po dizajnu
+          - ingest_emitted < 100         → scenario nije ni počeo (env bag)
+          - received > emitted           → fizički nemoguće
+          - alerts == 0  za scenario D   → INJECT_HIGH_TEMP nije radio
+          - storage log prazan + received > 0  → log scrape pre emitovanja
+        """
+        # Scenario D specifično
+        if "e2e_latency_s" in r and r["e2e_latency_s"] is not None:
+            if r["e2e_latency_s"] < 0:
+                return False, f"e2e_latency_s={r['e2e_latency_s']} (negative)"
+            dur = r.get("duration_s") or 0
+            if dur and r["e2e_latency_s"] > dur:
+                return False, f"e2e_latency_s={r['e2e_latency_s']} > duration_s={dur}"
+        # Scenario B specifično
+        if r.get("recovery_s") == "timeout":
+            return False, "recovery_s=timeout (60s polling istekao)"
+        if isinstance(r.get("recovery_s"), int) and r["recovery_s"] > 60:
+            return False, f"recovery_s={r['recovery_s']} > 60s (timeout po dizajnu)"
+        # Opšte
+        emitted = r.get("emitted") or 0
+        received = r.get("received") or 0
+        if emitted and emitted < 100:
+            return False, f"ingest_emitted={emitted} (scenario nije ni počeo — env bag?)"
+        if emitted and received and received > emitted:
+            return False, f"storage_received={received} > ingest_emitted={emitted} (nemoguće)"
+        # Prazan storage traffic = kontejneri nisu bili povezani (env bag
+        # ili pogrešan broker). Hvata oba slučaja:
+        #   (a) ingestion JE emitovao (emitted >= 100) ali storage NIJE primio
+        #   (b) ingestion NIJE ni počeo (emitted = 0/missing) — broken env
+        if received == 0 and (not emitted or emitted >= 100):
+            # za scenario A: batches mora biti > 0 da bi run bio legitiman
+            batches = r.get("batches") or 0
+            if emitted == 0 or batches == 0:
+                return False, "prazan run (received=0, batches=0) — env bug ili broker/storage disconnect"
+        # Scenario D: treba da bude ALERT-ova ako je INJECT radio
+        if r.get("alerts", 0) == 0 and "scenario-D" in r.get("run_id", ""):
+            return False, "alerts=0 (INJECT_HIGH_TEMP nije urodio plodom)"
+        return True, ""
+
     for run_dir in sorted(RAW.iterdir()):
         if not run_dir.is_dir():
             continue
@@ -290,6 +336,13 @@ def main():
             sent = run_info["emitted"]
             rec = run_info["persisted"]
             run_info["loss_pct"] = round(100.0 * (sent - rec) / sent, 2) if sent else 0.0
+        # Sanity check — flaguj loše run-ove, ali ih i dalje snimi u CSV
+        # (forenzika) da vidimo šta je bilo. U comparison-table.md ih preskačemo.
+        ok, reason = _validate_run(run_info)
+        run_info["_valid"] = ok
+        run_info["_invalid_reason"] = reason
+        if not ok:
+            print(f"[WARN] {name}: INVALID — {reason}", file=sys.stderr)
         scenarios[scenario].append(run_info)
 
     # Snimi CSV po scenariju
@@ -304,9 +357,11 @@ def main():
             w.writerows(rows)
         print(f"[ok] {out} ({len(rows)} redova)")
 
-    # Za comparison-table.md, koristimo SAMO najskoriji run po (scenario, broker)
-    # paru. Stari runovi ostaju u CSV (za forenziku), ali u tabeli prikazujemo
-    # samo reprezentativni najnoviji rezultat.
+    # Za comparison-table.md, koristimo SAMO najskoriji VALIDAN run po
+    # (scenario, broker) paru. Stari/nevalidni runovi ostaju u CSV (za
+    # forenziku), ali u tabeli prikazujemo samo reprezentativni najnoviji
+    # rezultat. Ako nema nijednog validnog runa, fallback na najskoriji
+    # nevalidni (uz [WARN] gore), ali sa _valid=False markerom.
     def latest_per_broker(rows):
         # run_id je 'scenario-X-{broker}-{...}'. Sortiranje po run_id = hronološki.
         latest = {}
@@ -314,7 +369,20 @@ def main():
             b = r["broker"]
             if b not in latest or r["run_id"] > latest[b]["run_id"]:
                 latest[b] = r
-        return list(latest.values())
+        # Filtriraj nevalidne ako postoji validan
+        out = []
+        for b, r in latest.items():
+            valid_rows = sorted(
+                (x for x in rows if x["broker"] == b and x.get("_valid", True)),
+                key=lambda x: x["run_id"],
+                reverse=True,
+            )
+            if valid_rows:
+                out.append(valid_rows[0])
+            else:
+                # nema validnih — fallback na najskoriji nevalidni sa markerom
+                out.append(r)
+        return out
 
     scenarios_latest = {s: latest_per_broker(rows) for s, rows in scenarios.items()}
 

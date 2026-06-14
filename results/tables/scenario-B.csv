@@ -1,5 +1,4 @@
-alerts,analytics_emitted,analytics_throughput,batches,broker,dropped,duration_s,e2e_latency_s,emitted,first_alert_after_reconnect,ingest_emitted,ingest_throughput,last_mean,level,num_devices,peak_backlog,persisted,received,recovery_s,run_id,storage_emitted,storage_lag_ms,storage_p95_lag_ms,storage_throughput,throughput_msg_per_sec,total_cpu_avg,total_mem_mb_avg
-0,,,,kafka,0,120,,60000,,,,,,,,,,,scenario-B-kafka-20260614-152243,,,,,500.0,0,0
-5,0,0,222,kafka,0,,,,,0,0,90.75,,,0,2286,2286,1,scenario-B-kafka-20260614-182818,2286.0,2.0,6.0,0,,66.42,529.81
-0,,,,mqtt,0,120,,60000,,,,,,,,,,,scenario-B-mqtt-20260614-133224,,,,,500.0,0,0
-11,0,0,345,mqtt,0,,,,,56746.0,0.0,90.44,,,63,56581,56644,23,scenario-B-mqtt-20260614-182525,56644.0,7.0,23.0,0,,40.31,206.49
+_invalid_reason,_valid,alerts,analytics_emitted,analytics_throughput,batches,broker,dropped,duration_s,e2e_latency_s,emitted,first_alert_after_reconnect,ingest_emitted,ingest_throughput,last_mean,level,num_devices,peak_backlog,persisted,received,recovery_s,run_id,storage_emitted,storage_lag_ms,storage_p95_lag_ms,storage_throughput,total_cpu_avg,total_mem_mb_avg
+,True,11,0,0,281,kafka,0,,,,,56755.0,0.0,90.63,,,92,56559,56651,23,scenario-B-kafka-20260614-200448,56651.0,10.0,12.0,0,70.8,763.99
+,True,11,0,0,345,mqtt,0,,,,,56746.0,0.0,90.44,,,63,56581,56644,23,scenario-B-mqtt-20260614-182525,56644.0,7.0,23.0,0,40.31,206.49
+,True,9,0,0,331,mqtt,0,,,,,45666.0,0.0,90.45,,,68,45498,45566,1,scenario-B-mqtt-20260614-200255,45566.0,11.0,22.0,0,46.79,176.13

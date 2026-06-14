@@ -31,6 +31,11 @@ else
     export DB_ENABLED=true
 fi
 
+# KLJUČNO: shell `export` NE utiče na `docker compose --env-file`. Persistuj
+# u .env PRE prvog `up` (vidi objašnjenje u scenario-a-throughput.sh).
+persist_env BROKER NUM_DEVICES RATE DURATION_S MODE \
+    MQTT_QOS MQTT_CLEAN_SESSION KAFKA_ACKS DB_ENABLED
+
 DC_BROKER="$(dc_for "$BROKER")"
 echo "[1/5] Pokrećem stack (bez ingestion — pokrenućemo je niže sa TAČNIM env vrednostima)..."
 $DC_BROKER down -v >/dev/null 2>&1 || true
@@ -44,6 +49,9 @@ else
 fi
 
 wait_for_broker "$BROKER" || { echo "Broker not ready"; exit 1; }
+if [ "$BROKER" = "kafka" ]; then
+    ensure_kafka_topic || true
+fi
 
 # Pokreni docker stats collector — obavezan za §5 (CPU/RAM u tabeli)
 start_metrics_collector "$OUT" 1

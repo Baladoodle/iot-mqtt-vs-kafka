@@ -183,6 +183,23 @@ ok "Broker:   $BROKER"
 ok "Skripta:  $TARGET"
 echo
 
+# Persistuj visoko-nivo varijable u .env. Scenario skripte dodaju i ostale
+# (RATE, DURATION_S, INJECT_*, ...), ali BROKER i NUM_DEVICES su ovde
+# poznati i treba da budu u .env pre nego što scenario skripta pokrene
+# `docker compose up`. Bez ovoga, docker compose čita .env iz prethodnog
+# run-a i ingestion/storage/analytics rade sa pogrešnim brokerom (vidi
+# scenario-B-kafka-20260614-182818 za konkretan primer).
+ENV_FILE="$ROOT_DIR/.env"
+if [ -f "$ENV_FILE" ]; then
+    for key in BROKER NUM_DEVICES; do
+        if [ -n "${!key:-}" ]; then
+            sed -i.bak -E "/^[[:space:]]*(#[[:space:]]*)?(export[[:space:]]+)?${key}=/d" "$ENV_FILE" 2>/dev/null || true
+            rm -f "${ENV_FILE}.bak"
+            printf "%s=%s\n" "$key" "${!key}" >> "$ENV_FILE"
+        fi
+    done
+fi
+
 # Pozovi sa pravim argumentima
 if [ -n "$LEVEL" ]; then
     exec "$TARGET" "$BROKER" "$NUM_DEVICES" "$LEVEL"

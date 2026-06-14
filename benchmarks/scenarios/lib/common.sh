@@ -63,6 +63,69 @@ wait_for_broker() {
     return 1
 }
 
+# Persistuj env vrednosti u .env tako da ih `docker compose --env-file` vidi.
+#
+# Pozadina: `export X=Y` u shell-u NE utiče na `docker compose` jer compose
+# čita .env fajl u vreme `up`, a shell exports su mu nevidljivi. Bez ovoga,
+# scenario skripte koje menjaju RATE, DURATION_S, NUM_DEVICES, INJECT_*, itd.
+# menjaju samo shell — kontejner se startuje sa starim vrednostima iz .env.
+# Rezultat: ingestion/storage/analytics rade sa "wrong broker / wrong rate"
+# iz prethodnog run-a (vidi scenario-B-kafka-20260614-182818, scenario-C-mqtt
+# -20260614-182832, itd.).
+#
+# Upotreba (poziva se posle `export` bloka):
+#   persist_env BROKER RATE DURATION_S NUM_DEVICES INJECT_HIGH_TEMP
+#
+# Skripta menja IN-PLACE $ROOT_DIR/.env: prvo briše sve linije koje počinju
+# sa zadatim ključem (sa ili bez komentara, sa `export ` prefiksom ili bez),
+# pa append-uje nove vrednosti. Sve ostale env varijable u .env (npr.
+# STORAGE_METRICS_PORT, DATABASE_URL) ostaju netaknute.
+persist_env() {
+    local env_file="$ROOT_DIR/.env"
+    for key in "$@"; do
+        # Preskoči prazne vrednosti (export X= bi inače napisao "X=" u .env)
+        local val="${!key:-}"
+        [ -z "$val" ] && continue
+        # Ukloni postojeću liniju (sa ili bez komentara, sa `export` ili bez)
+        sed -i.bak -E "/^[[:space:]]*(#[[:space:]]*)?(export[[:space:]]+)?${key}=/d" "$env_file" 2>/dev/null || true
+        rm -f "${env_file}.bak"
+        # Append-uj novu vrednost
+        printf "%s=%s\n" "$key" "$val" >> "$env_file"
+    done
+}
+
+# Kreiraj Kafka topic ako ne postoji. Koristi se posle `wait_for_broker kafka`
+# jer compose.kafka.yaml-ov `command:` kreira topic sa `sleep 5` racom —
+# healthcheck (`kafka-broker-api-versions.sh`) može proći pre nego što se
+# topic kreira, pa storage/ingestion krenu i dobiju "This server does not
+# host this topic-partition" (vidi scenario-A-kafka-100-acksall).
+#
+# Ovo je retries-safety net: koristi `--if-not-exists` pa je idempotentan,
+# i ima retry u slučaju da broker nije sasvim spreman.
+ensure_kafka_topic() {
+    local topic="${KAFKA_TOPIC:-iot-telemetry}"
+    local partitions="${KAFKA_TOPIC_PARTITIONS:-4}"
+    local rf="${KAFKA_TOPIC_RF:-1}"
+    local container="${COMPOSE_PROJECT_NAME:-iots-proj2}-kafka"
+    local tries=10
+    while [ $tries -gt 0 ]; do
+        if docker exec "$container" \
+            /opt/kafka/bin/kafka-topics.sh \
+            --bootstrap-server localhost:9092 \
+            --create --if-not-exists \
+            --topic "$topic" \
+            --partitions "$partitions" \
+            --replication-factor "$rf" 2>/dev/null; then
+            echo "Kafka topic '$topic' OK (partitions=$partitions, rf=$rf)"
+            return 0
+        fi
+        sleep 2
+        tries=$((tries - 1))
+    done
+    echo "WARN: ensure_kafka_topic failed for '$topic' (broker still not ready?)" >&2
+    return 1
+}
+
 # Pokreni docker stats u pozadini i snimaj u CSV.
 start_metrics_collector() {
     local outdir="$1"

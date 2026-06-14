@@ -40,6 +40,12 @@ export RATE="$((NUM_DEVICES * 10))"   # 10 msg/s po uređaju
 export DURATION_S="30"
 export MODE="rate"
 
+# KLJUČNO: shell `export` NE utiče na `docker compose --env-file` (compose čita
+# .env u vreme `up`). Bez ovoga, ingestion bi radio sa starim .env vrednostima
+# iz prethodnog scenarija → "wrong broker / wrong rate" simptomi. Persistuj
+# SVE scenario-specific varijable u .env PRE prvog `up`.
+persist_env BROKER NUM_DEVICES RATE DURATION_S MODE MQTT_QOS KAFKA_ACKS DB_ENABLED
+
 # Stack down prethodni, pa up novi
 DC_BROKER="$(dc_for "$BROKER")"
 echo "[1/4] Pokrećem stack (bez ingestion — pokrenućemo je niže sa TAČNIM env vrednostima)..."
@@ -57,6 +63,12 @@ fi
 # Sačeka broker
 echo "[2/4] Čekam broker..."
 wait_for_broker "$BROKER" || { echo "Broker not ready"; exit 1; }
+# Za kafka, osiguraj da je topic kreiran (compose.kafka.yaml-ov init može
+# kasniti za healthcheck-om → storage fatalno puca sa "topic-partition
+# doesn't exist").
+if [ "$BROKER" = "kafka" ]; then
+    ensure_kafka_topic || true
+fi
 
 # Pokreni metrics collector
 echo "[3/4] Pokrećem metrics collector i ingestion..."

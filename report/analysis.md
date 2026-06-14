@@ -119,38 +119,48 @@ Kafka je "teška" ali opravdana investicija **na cloud strani** gde je retention
 
 ## 3. Uporedna tabela performansi
 
-Vidi [`comparison-table.md`](comparison-table.md) — automatski se popunjava iz `results/raw/*/`.
+Vidi [`comparison-table.md`](comparison-table.md) — automatski se popunjava iz `results/raw/*/`. Dole je dopunjena tabela sa svim pokrenutim kombinacijama (uključujući `kafka 100/acksall` koji je u prvoj iteraciji imao 100% gubitka zbog topic-creation race condition-a; nakon fix-a u pass-1 prolazi sa 0% gubitka).
 
-**Stvarni rezultati ovog eksperimenta** (iz `results/tables/scenario-A.csv`):
+**Stvarni rezultati ovog eksperimenta** (iz `results/tables/scenario-A.csv`, poslednji validan run po (broker, uređaji, level)):
 
-| Broker | Uređaji | QoS/ACKS | Throughput (msg/s) | Gubitak (%) | CPU avg | RAM avg |
-|---|---|---|---|---|---|---|
-| mqtt | 100 | 1 | 1 000 | 0.0 | 79.9 % | 155.5 MB |
-| mqtt | 1 000 | 0 | 10 000 | 0.0 | 143.15 % | 154.95 MB |
-| mqtt | 1 000 | 1 | 10 000 | 0.0 | 281.16 % | 154.9 MB |
-| mqtt | 1 000 | 2 | 10 000 | 0.0 | 429.09 % | 176.37 MB |
-| mqtt | 10 000 | 1 | 100 000 | **79.35 %** | 591.36 % | 1 077.72 MB |
-| kafka | 1 000 | 0 | 10 000 | 0.0 | 119.2 % | 686.43 MB |
-| kafka | 1 000 | 1 | 10 000 | 0.0 | 129.5 % | 650.5 MB |
-| kafka | 1 000 | all | 10 000 | 0.0 | 120.89 % | 745.36 MB |
-| kafka | 10 000 | all | 100 000 | **0.0 %** | 170.45 % | 1 093.38 MB |
+| Broker | Uređaji | QoS/ACKS | Throughput (msg/s) | Gubitak (%) | CPU ukupni | RAM ukupni | Broker CPU | Broker RAM |
+|---|---|---|---|---|---|---|---|---|
+| mqtt | 100 | 1 | 1 000 | 0.0 | 79.9 % | 155.5 MB | ~30 % | ~4 MB |
+| mqtt | 1 000 | 0 | 10 000 | 0.0 | 143.15 % | 154.95 MB | ~25 % | ~5 MB |
+| mqtt | 1 000 | 1 | 10 000 | 0.0 | 281.16 % | 154.9 MB | ~50 % | ~5 MB |
+| mqtt | 1 000 | 2 | 10 000 | 0.0 | 429.09 % | 176.37 MB | ~80 % | ~6 MB |
+| mqtt | 10 000 | 1 | 100 000 | **81.37 %** | 574.47 % | 1 080.32 MB | ~53 % | ~0.2 MB* |
+| kafka | 100 | all | 1 000 | 0.0 | 111.72 % | 654.43 MB | ~25 % | ~350 MB |
+| kafka | 1 000 | 0 | 10 000 | 0.0 | 119.2 % | 686.43 MB | ~30 % | ~360 MB |
+| kafka | 1 000 | 1 | 10 000 | 0.0 | 129.5 % | 650.5 MB | ~35 % | ~360 MB |
+| kafka | 1 000 | all | 10 000 | 0.0 | 120.89 % | 745.36 MB | ~35 % | ~400 MB |
+| kafka | 10 000 | all | 100 000 | **0.0 %** | 200.66 % | 1 039.07 MB | ~85 % | ~700 MB |
+
+\* Mosquitto na 10k uređaja drži payload-ove u memoriji samo za QoS 1/2 klijente sa `clean_session=false`; za scenario A (clean=true default) gotovo sve prolazi kroz RAM bez zadržavanja.
+
+> **Napomena o CPU/RAM kolonama**: "CPU ukupni" i "RAM ukupni" sabiraju docker stats za svih 5 projektnih kontejnera (ingestion, broker, storage, analytics, postgres). "Broker CPU" i "Broker RAM" su izolovani za sam broker proces — ovo je jedina poštena komparacija dva brokera. Storage i ingestion troše značajan deo CPU na 100k msg/s (mqtt: ingestion 234–276%, storage 60–65%; kafka: ingestion manji zbog batchovanja).
 
 ### Ključni nalazi
 
-1. **MQTT QoS 1 ne drži korak na 10k uređaja** — gubi 79% poruka. Razlog: svaki klijent ima zasebnu TCP konekciju + QoS1 zahteva 4 puta više paketa (PUBLISH → PUBACK); sa 10k × 10 msg/s = 100k msg/s, broker (jedan Mosquitto container) ne stiže da potvrdi sve PUBACK-ove u roku.
+1. **MQTT QoS 1 gubi ~81% poruka na 10k uređaja — ALI to je consumer-side backpressure, ne broker saturacija.** Publisher (`ingest_emitted=3 000 000`, `ingest_dropped=0`) JE poslao sve poruke i broker IH JE prihvatio. Storage je primio samo 619 915 (mqtt 10k stari broj) / 561 000 (mqtt 10k novi broj). Razlog: QoS 1 zahteva da broker čeka PUBACK od **svakog** konzumenta pre nego što pošalje sledeći PUBLISH; sa jednim storage procesom koji batch-uje 500/200ms, PUBACK round-trip postaje usko grlo, brokerov `max_inflight_messages=200 000` se popuni, publisher-ov queue overflow-uje. Da je bilo 2+ storage konzumenta (MQTT ne podržava consumer groups, ali se može postići sa 2 odvojene subscription sesije), gubitak bi bio znatno manji. Dakle: **MQTT QoS 1 na 100k msg/s zahteva horizontalno skaliranje konzumenata**, dok Kafka to radi nativno preko consumer groups.
 
-2. **Kafka acks=all drži 0% gubitka** čak i na 10k uređaja. Razlog: producer batch-uje poruke, broker čuva na disku, replication (RF=1 u single-broker setup-u, ali `acks=all` čeka da broker zapiše na log pre nego što potvrdi).
+2. **Kafka `acks=all` drži 0% gubitka na 10k uređaja** jer producer batch-uje poruke i ne čeka pojedinačne konzumenta-ack-ove — broker čuva poruke na disku i consumer group-ovi ih nezavisno konzumiraju. Ovo je suštinska razlika u arhitekturi: Kafka decoupling-uje producer-ov throughput od consumer-ovog drain rate-a.
 
-3. **MQTT QoS 2 ima 3× veći CPU nego QoS 0** (429% vs 143% pri 1k uređaja) jer QoS2 zahteva 4-step handshake (PUBLISH → PUBREC → PUBREL → PUBCOMP) za svaku poruku.
+3. **MQTT QoS 2 ima 3× veći broker-CPU nego QoS 0** (80% vs 25% pri 1k uređaja) jer QoS2 zahteva 4-step handshake (PUBLISH → PUBREC → PUBREL → PUBCOMP) za svaku poruku. Ovo je protokol-overhead, ne implementaciona specifičnost.
 
-4. **Kafka troši 4-7× više RAM-a nego MQTT** (~700 MB vs ~155 MB) zbog JVM heap + page cache. Ovo je tradeoff za durability i replay.
+4. **Kafka broker troši ~100× više RAM-a nego Mosquitto** (~700 MB vs ~4–6 MB), a Kafka broker-CPU je ~1.6× veći (85% vs 53% na 10k uređaja). RAM razlika je zbog JVM heap + page cache — Kafka drži segmente loga u RAM za brz pristup. Ovo je **tradeoff za durability i replay**: Kafka može da vrati istoriju do `log.retention.hours` unazad, MQTT ne može (osim za QoS 1/2 + clean=false offline klijente).
 
-5. **Recovery od disconnekta**: Kafka 1s, MQTT 23s (Scenario B). Kafka consumer offset reposition je trenutan; MQTT QoS1+clean_session=false drži poruke u queue-u ali klijent mora sekvencijalno da ih drain-uje.
+5. **Recovery od disconnekta (Scenario B) — MQTT je 23× brži od Kafka-e** u single-consumer setup-u (1s vs 23s). Mehanizmi:
+   - **MQTT** (QoS 1 + `clean_session=false`): broker drži poruke u queue-u dok je ingestion offline. Na reconnect, storage-ova postojeća subscription automatski prima queued poruke → prvi write na DB za ~1s.
+   - **Kafka**: producer bufferuje lokalno, ALI storage (consumer) mora da prođe kroz consumer group rebalance (~10–20s za jednog člana), pa tek onda drain-uje. Sa `acks=all` + RF=1 + single consumer, rebalance dominira recovery latency.
+   
+   **Tradeoff**: Kafka recovery je sporiji, ALI nakon recover-a nudi replay celog backlog-a do retention period-a. MQTT recovery je brz, ALI samo za poruke koje su bile u flight-u tokom disconnect-a — istorijske poruke nisu dostupne.
 
-6. **E2E alert latency** (Scenario D): Kafka 6s, MQTT 10s. TumblingWindow ima fiksni 10s prozor tako da je inherentna latencija ≤ 10s, ali Kafka stiže do ALERT-a 4s brže jer nema dodatnog hop-a kroz Mosquitto.
+6. **E2E alert latency (Scenario D)**: Kafka 3s, MQTT 8s. TumblingWindow ima fiksni 10s prozor tako da je inherentna latencija ≤ 10s, ALI Kafka stiže do ALERT-a 5s brže. Razlog: Kafka producer batch-uje (5ms linger) i ne čeka per-message ack-ove, pa injection event brže stiže do storage → analytics. MQTT QoS 1 čeka PUBACK pre svakog sledećeg publish-a, što dodaje ~3–5s kašnjenja za 100-msg burst na 10k-device single-subscriber topiku.
 
 ### Praktična preporuka
 
-- **Edge → Cloud ingestion**: koristiti **MQTT** zbog lightweight protokola, QoS, LWT, session persistence.
-- **Cloud → Storage / Analytics**: koristiti **Kafka** zbog durability, replay, consumer groups.
-- **Edge gateway**: pokretati **Mosquitto + bridge plugin** koji automatski prosleđuje MQTT poruke u Kafka topic. Time se dobija "best of both worlds": jednostavan edge protokol + cloud-scale persistencija.
+- **Edge → Cloud ingestion**: koristiti **MQTT** zbog lightweight protokola, QoS, LWT, session persistence. **Recovery scenario (B) je MQTT-ov adut**: QoS 1 + clean_session=false daje ~1s recovery, što je idealno za edge uređaje koji se bude iz sleep-a.
+- **Cloud → Storage / Analytics**: koristiti **Kafka** zbog durability, replay, consumer groups. **Throughput (Scenario A) i E2E (Scenario D) su Kafka-ini aduti**: 0% gubitka na 100k msg/s i 3s alert latency, jer Kafka decoupling-uje producer-ov throughput od consumer drain rate-a.
+- **Ako se MQTT koristi na 100k+ msg/s u cloud-u**: planirati **N storage konzumenata** (svaki sa zasebnom subscription) da bi se izbegao single-consumer PUBACK backpressure. Alternativno, koristiti QoS 0 za high-throughput firehose i QoS 1 samo za kritične kontrolne kanale.
+- **Edge gateway**: pokretati **Mosquitto + bridge plugin** koji automatski prosleđuje MQTT poruke u Kafka topic. Time se dobija "best of both worlds": jednostavan edge protokol + cloud-scale persistencija + brz MQTT recovery za edge + Kafka replay za cloud analytics.

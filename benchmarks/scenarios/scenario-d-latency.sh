@@ -31,6 +31,14 @@ else
     export DB_ENABLED=false
 fi
 
+# KLJUČNO: shell `export` NE utiče na `docker compose --env-file`. Persistuj
+# u .env PRE prvog `up` (vidi objašnjenje u scenario-a-throughput.sh). Ovde
+# je posebno bitno jer INJECT_HIGH_TEMP i INJECT_AT_S nemaju default u
+# compose.yaml — bez ovoga bi ingestion radio sa INJECT_HIGH_TEMP=false
+# iz starog .env i scenario D ne bi proizveo nikakav ALERT.
+persist_env BROKER NUM_DEVICES MODE TIME_SCALE DURATION_S \
+    INJECT_HIGH_TEMP INJECT_AT_S MQTT_QOS KAFKA_ACKS DB_ENABLED
+
 DC_BROKER="$(dc_for "$BROKER")"
 $DC_BROKER down -v >/dev/null 2>&1 || true
 # Ne startuj ingestion ovde: env vrednosti koje su gore exportovane bi bile
@@ -44,6 +52,9 @@ else
 fi
 
 wait_for_broker "$BROKER" || { echo "Broker not ready"; exit 1; }
+if [ "$BROKER" = "kafka" ]; then
+    ensure_kafka_topic || true
+fi
 
 # Pokreni docker stats collector — obavezan za §5 (CPU/RAM u tabeli)
 start_metrics_collector "$OUT" 1
