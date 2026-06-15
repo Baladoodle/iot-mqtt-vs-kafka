@@ -68,7 +68,7 @@ sha256sum Data.full.csv   # 4023f852d920c0c7abd0267408fd912694c5a9e8d1334d8852be
 ## Struktura projekta
 
 | Putanja | Sadržaj |
-|---|---|
+|----|----|
 | `compose/` | `compose.yaml` (baza) + per-broker overlay fajlovi |
 | `brokers/` | Konfiguracije za Mosquitto i Kafka (KRaft) |
 | `services/ingestion/` | .NET 10 — simulator IoT uređaja |
@@ -84,7 +84,7 @@ sha256sum Data.full.csv   # 4023f852d920c0c7abd0267408fd912694c5a9e8d1334d8852be
 ## Eksperimentalni scenariji
 
 | Scenario | Šta meri | Ključne skripte |
-|---|---|---|
+|----|----|----|
 | **A** Masivni ingestion | Throughput + gubitak poruka za 100 / 1 000 / 10 000 uređaja | `benchmarks/scenarios/scenario-a-throughput.sh` |
 | **B** Edge disconnect | 30 s `docker network disconnect`; oporavak pretplate/offseta | `benchmarks/scenarios/scenario-b-disconnect.sh` |
 | **C** Burst opterećenje | 50 → 5 000 msg/s skok; backlog i backpressure | `benchmarks/scenarios/scenario-c-burst.sh` |
